@@ -82,8 +82,8 @@ static CGR_INT CgrDeviceArping
     
     arping_struct->thread_status = 2;//thread working mark
     
-    DEBUGINFO_DEVICE("######################MAC:%s INFC:%s", pLocalMac, pInterface);
-    DEBUGINFO_DEVICE("######################RMOTE_IP:%u LOCAL_IP:%u", nRemoteIp, nLocalIp);
+    thread_debug("######################MAC:%s INFC:%s", pLocalMac, pInterface);
+    thread_debug("######################RMOTE_IP:%u LOCAL_IP:%u", nRemoteIp, nLocalIp);
     CGR_INT                     optval = 1;
     CGR_INT                     s;          /* socket fd */
     CGR_INT                     rv = 1;     /* return value */
@@ -99,13 +99,13 @@ static CGR_INT CgrDeviceArping
 
     if ((s = socket(PF_PACKET, SOCK_PACKET, htons(ETH_P_ARP))) == -1)
     {
-        DEBUGERROR_DEVICE("Could not open raw socket");
+        thread_error("Could not open raw socket");
         return -1;
     }
 
     if (setsockopt(s, SOL_SOCKET, SO_BROADCAST, &optval, sizeof(optval)) == -1)
     {
-        DEBUGERROR_DEVICE("Could not setsocketopt on raw socket");
+        thread_error("Could not setsocketopt on raw socket");
         close(s);
         return -1;
     }
@@ -130,7 +130,7 @@ static CGR_INT CgrDeviceArping
     /* Send arp request */    
     if (sendto(s, &arp, sizeof(arp), 0, &addr, sizeof(addr)) < 0)
     {
-        DEBUGERROR_DEVICE("Error on sending ARP request");
+        thread_error("Error on sending ARP request");
         rv = -1;
         goto CgrDeviceArpingExit;
     }
@@ -143,7 +143,7 @@ static CGR_INT CgrDeviceArping
 
     if (i < 0)
     {
-        DEBUGERROR_DEVICE("Error on select");
+        thread_error("Error on select");
         rv = -1;
         arping_struct->status = 0;
         goto CgrDeviceArpingExit;
@@ -151,7 +151,7 @@ static CGR_INT CgrDeviceArping
     else if (i == 0)
     {
         /* Time out */
-        DEBUGINFO_DEVICE("Not receive ARPING response in time");
+        thread_debug("Not receive ARPING response in time");
         rv = -1;
         arping_struct->status = 0;
         goto CgrDeviceArpingExit;
@@ -175,7 +175,7 @@ static CGR_INT CgrDeviceArping
             bcmp(arp.tHaddr, usLocalMacHex, 6)  == 0                    &&  /* Compare local MAC  */
             bcmp(arp.sHaddr, usRemoteMacHex, 6) == 0)                       /* Compare remote MAC */
         {
-            DEBUGINFO_DEVICE("Valid arp reply receved for this address");
+            thread_debug("Valid arp reply receved for this address");
             rv = 0;
             arping_struct->status = 1;
         }
@@ -196,7 +196,7 @@ static GetRemoteIpMac(IP_MAC *s_ip_mac)
     char sHwType[16];
     char sFlagsMask[32];
     char sInterface[16];
-    //system("/sbin/arp -n > ./data.arp");
+    system("/sbin/arp -n > ./data.arp");
     fp = fopen("./data.arp", "r");
     fseek (fp, 0, SEEK_END);
     fsize = ftell(fp);
@@ -214,10 +214,10 @@ static GetRemoteIpMac(IP_MAC *s_ip_mac)
         pfp++;
     }
     pfp = arp_data;
-    /*for(; *pfp != '\0';)
+    for(; *pfp != '\0';)
     {
         pfp++;
-    }*/
+    }
     while(1)
     {
         for(; *pfp != '\0';)
@@ -230,23 +230,70 @@ static GetRemoteIpMac(IP_MAC *s_ip_mac)
             break;
         }
         sscanf(pfp, "%s %s %s %s %s", s_ip_mac[count].s_ip, sHwType, s_ip_mac[count].s_mac, sFlagsMask, sInterface);
+		thread_debug("get remote IP:%s MAC:%s", s_ip_mac[count].s_ip, s_ip_mac[count].s_mac);
         s_ip_mac[count].status = 1;
         count++;
     }
 }
-void main(void)
+int GetLocalMacAndIp(char *iface_name, char *local_mac, char *local_ip)
 {
+	FILE *pfp = NULL;
+	char *ptmp = NULL;
+	char syscmd[128];
+	char tmpbuffer[128], *tmp;
+
+	memset(syscmd, '\0', sizeof(syscmd));
+	memset(tmpbuffer, '\0', sizeof(tmpbuffer));
+	sprintf(syscmd, "ifconfig %s", iface_name);
+	if((pfp = popen(syscmd, "r")) == NULL)
+	{
+		thread_debug("syscmd:%s failed", syscmd);
+		return -1;
+	}
+	fgets(tmpbuffer, sizeof(tmpbuffer), pfp);
+	sscanf(tmpbuffer, "%*s%*s%*s%*s%s", local_mac);
+	thread_debug("local mac: %s", local_mac);
+	//strcpy(local_mac, local_ip);
+	fgets(tmpbuffer, sizeof(tmpbuffer), pfp);
+	sscanf(tmpbuffer, "%*s%s", local_ip);
+	strcpy(tmpbuffer, local_ip);
+	tmp = strchr(tmpbuffer, ':');
+	++tmp;
+	strcpy(local_ip, tmp);
+	thread_debug("local ip:%s local mac: %s", local_ip, local_mac);
+	pclose(pfp);
+	return 0;
+
+
+}
+void main(int argc, char *argv[])
+{
+	char local_mac[32], local_ip[32];
     struct timeval begin_time[10000];
     struct timeval end_time[10000];
+    int test_count = 10;
+
+	memset(local_mac, 0, sizeof(local_mac));
+	memset(local_ip, 0, sizeof(local_ip));
     memset(begin_time, 0, sizeof(begin_time));
     memset(end_time, 0, sizeof(end_time));
-    int test_count = 10000;
     
     IP_MAC s_ip_mac[100];
     ARPING_STRUCT arping_ifo[100];
     DEVICE_STRUCT local_info;
     struct in_addr      oInAddr;
-    
+   thread_debug("argc=%d", argc); 
+	if(argc != 3 || strcmp(argv[1], "-i"))
+	{
+		printf("usage: -i interface name\n");
+		exit(-1);
+	}
+	if(GetLocalMacAndIp(argv[2], local_mac, local_ip))
+	{
+		printf("interface name error!!!");
+		exit(-1);
+	}
+
     THREAD_POOL *pool = creat_thread_pool(3, 50);
     init_thread_pool(pool);
     void (*job)(void *);
@@ -256,11 +303,11 @@ void main(void)
     memset(arping_ifo, 0,sizeof(arping_ifo));
     memset(&local_info, 0,sizeof(local_info));
     GetRemoteIpMac(s_ip_mac);
-    inet_aton("192.168.108.147", &oInAddr);
-    sprintf(local_info.interface, "eth3");
+    inet_aton(local_ip, &oInAddr);
+    sprintf(local_info.interface, argv[2]);
     local_info.local_ip = ntohl(oInAddr.s_addr);
     //local_info.local_ip = htonl(oInAddr.s_addr);
-    sprintf(local_info.local_mac, "00:04:E2:A0:F8:3F");
+    sprintf(local_info.local_mac, local_mac);
 while(test_count--)
 {
     printf("test count=%d\n", test_count);   
@@ -327,7 +374,7 @@ while(test_count--)
     //close_thread_pool(pool);
 	sleep(1);
 }
-for(test_count = 10000; test_count > 0; test_count--)
+for(test_count = 10; test_count > 0; test_count--)
 {
     unsigned int seconds, mro_seconds;
     printf("test count=%d\n", test_count);
