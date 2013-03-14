@@ -401,7 +401,7 @@ for(test_count = 10; test_count > 0; test_count--)
         mro_seconds = end_time[test_count - 1].tv_usec - begin_time[test_count - 1].tv_usec;
         seconds = end_time[test_count - 1].tv_sec - begin_time[test_count - 1].tv_sec;
     }
-    DEBUGINFO_ARPING("Arping test %d times wast time %us%ums\n", 10 - test_count, seconds, mro_seconds);
+    DEBUGINFO_ARPING("Arping test %d times wast time %us%uus\n", 10 - test_count, seconds, mro_seconds);
 }
 //DEBUGINFO_ARPING("test count=%d\n", test_count);
 
