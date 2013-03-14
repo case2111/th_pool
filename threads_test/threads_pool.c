@@ -1,5 +1,5 @@
 #include "threads_pool.h"
-#define TH_STACK_SIZE 5120
+#define TH_STACK_SIZE 6144//1024*6
 
 #define TH_BUSY      1
 #define TH_TEMP_BUSY 2
